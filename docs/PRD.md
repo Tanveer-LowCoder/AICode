@@ -6,7 +6,7 @@
 ---
 
 ## 1. Overview
-A cross-platform desktop application that provides a friendly GUI for interacting with Claude via the Claude CLI and optionally Claude Code, designed for non-technical users. The app bundles necessary CLI tooling, supports the latest models, and delivers an easy chat and coding experience.
+A cross-platform desktop application that provides a friendly GUI for interacting with Claude via the Claude CLI and optionally Claude Code, designed for non-technical users. The app bundles necessary CLI tooling, supports the latest models, and delivers an easy chat and coding experience. The architecture is intentionally modular so additional provider CLIs or SDKs (e.g., Codex or Gemini) can be supported in the future.
 
 ## 2. Goals
 - Deliver a minimal, intuitive interface for chatting with Claude.
@@ -16,6 +16,7 @@ A cross-platform desktop application that provides a friendly GUI for interactin
 - Provide basic integration with Claude Code for code navigation/editing.
 - Collect usage analytics and error reports for continual improvement.
 - Maintain high standards for security, privacy, and automatic updates.
+- Establish a provider abstraction layer that can later support other AI CLIs/SDKs (Codex, Gemini, etc.).
 
 ## 3. Non-Goals
 - Advanced theming/branding beyond a minimal default look.
@@ -397,6 +398,12 @@ class PermissionHandler {
 | `--resume` | string | Resume session by ID |
 | `--continue` | boolean | Continue recent session |
 | `--dangerously-skip-permissions` | boolean | Skip all prompts |
+
+### 6.5 Provider Abstraction Layer
+- **Purpose**: Allow the application to swap between different AI providers.
+- **Location**: Provider modules live in `src/providers/` (starting with a Claude CLI wrapper).
+- **Interface**: Each provider exposes a common API (e.g., `query(prompt, options)`) so the UI can remain provider-agnostic.
+- **Future Providers**: Codex CLI, Gemini CLI, and other SDK-based integrations can be added without major refactors.
 
 ## 10. Metrics & Success Criteria
 - **Activation**: % of users who send at least one message after installation.
