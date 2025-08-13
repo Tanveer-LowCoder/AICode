@@ -56,11 +56,153 @@ A cross-platform desktop application that provides a friendly GUI for interactin
   - Sub-agents can be promoted to full threads.
 
 ### 6.4 Claude Code Integration
-- Optional “Code Mode” toggle per thread:
+- Optional "Code Mode" toggle per thread:
   - When enabled, user can open local files or folders.
   - Basic file tree view and content preview.
   - Ability to send file contents or diffs to Claude.
   - Save suggestions back to disk (confirmation dialog before write).
+
+#### Claude Code SDK Integration
+- **Supported Languages**: TypeScript and Python SDKs
+- **Primary Interface**: `query` function with streaming responses
+- **Authentication**: Support for Anthropic API, Amazon Bedrock, and Google Vertex AI
+- **Output Formats**: text, json, stream-json
+- **Session Management**: Resume and continue conversations with session IDs
+
+#### Sub-agents System
+- **Purpose**: Specialized AI assistants for specific tasks
+- **Configuration Format**: Markdown files with YAML frontmatter
+- **Storage Locations**:
+  - Project: `.claude/agents/`
+  - User: `~/.claude/agents/`
+- **Required Fields**:
+  - `name`: Unique identifier (lowercase with hyphens)
+  - `description`: Natural language task description
+  - `tools`: Optional comma-separated list of allowed tools
+- **Built-in Examples**:
+  - code-reviewer: Security and quality analysis
+  - debugger: Root cause analysis and fixes
+  - test-runner: Automated test execution
+  - data-scientist: SQL and data analysis
+
+##### Sub-agent Configuration Example
+```markdown
+---
+name: security-auditor
+description: Security vulnerability scanner. Use PROACTIVELY when reviewing code changes.
+tools: Read, Grep, Glob, WebSearch
+---
+
+You are a security expert specializing in OWASP Top 10 vulnerabilities.
+
+When invoked:
+1. Scan for common security issues
+2. Check for exposed secrets or API keys
+3. Validate input sanitization
+4. Review authentication/authorization
+5. Assess cryptographic implementations
+
+Provide findings organized by severity:
+- Critical: Immediate security risks
+- High: Significant vulnerabilities
+- Medium: Potential issues
+- Low: Best practice violations
+```
+
+#### Hooks System
+- **Configuration**: JSON in settings files
+- **Supported Events**:
+  - `PreToolUse`: Before tool execution (can block)
+  - `PostToolUse`: After tool completion
+  - `Notification`: When Claude needs input
+  - `UserPromptSubmit`: On user input
+  - `Stop`: When Claude finishes
+  - `SubagentStop`: When sub-agent completes
+  - `SessionStart`: On session initialization
+- **Hook Types**: Command execution with timeout support
+- **Security**: 60-second default timeout, runs in current directory
+
+##### Hook Input Schema
+```typescript
+interface HookInput {
+  session_id: string;
+  transcript_path: string;
+  cwd: string;
+  hook_event_name: string;
+  
+  // Event-specific fields
+  tool_name?: string;        // PreToolUse, PostToolUse
+  tool_input?: any;          // PreToolUse, PostToolUse
+  tool_response?: any;       // PostToolUse only
+  message?: string;          // Notification
+  prompt?: string;           // UserPromptSubmit
+  stop_hook_active?: boolean;// Stop, SubagentStop
+  trigger?: string;          // PreCompact
+  source?: string;           // SessionStart
+}
+```
+
+##### Hook Output Schema
+```typescript
+interface HookOutput {
+  // Common fields
+  continue?: boolean;        // Whether to continue execution
+  stopReason?: string;       // Message when continue=false
+  suppressOutput?: boolean;  // Hide from transcript
+  
+  // PreToolUse specific
+  hookSpecificOutput?: {
+    hookEventName: "PreToolUse";
+    permissionDecision?: "allow" | "deny" | "ask";
+    permissionDecisionReason?: string;
+  };
+  
+  // UserPromptSubmit specific
+  decision?: "block";
+  reason?: string;
+  hookSpecificOutput?: {
+    hookEventName: "UserPromptSubmit";
+    additionalContext?: string;
+  };
+}
+```
+
+##### Hook Exit Codes
+- `0`: Success, stdout shown in transcript mode
+- `2`: Blocking error, stderr sent to Claude
+- `Other`: Non-blocking error, stderr shown to user
+
+#### Memory Management
+- **Hierarchy** (highest to lowest precedence):
+  1. Enterprise policy: System-wide settings
+  2. Project memory: `./CLAUDE.md`
+  3. User memory: `~/.claude/CLAUDE.md`
+  4. Local project: `./CLAUDE.local.md` (deprecated)
+- **Import Syntax**: `@path/to/file` for modular configuration
+- **Auto-loading**: All memory files loaded on startup
+
+#### CLI Commands
+- `claude`: Start interactive REPL
+- `claude "query"`: Start with initial prompt
+- `claude -p "query"`: Non-interactive mode
+- `claude -c`: Continue recent conversation
+- `claude -r <id>`: Resume specific session
+- `claude update`: Update to latest version
+- `claude mcp`: Configure MCP servers
+
+#### Tool Permissions
+- **Available Tools**:
+  - `Bash`: Shell command execution
+  - `Read`: File reading
+  - `Write`/`Edit`/`MultiEdit`: File modifications
+  - `Glob`: File pattern matching
+  - `Grep`: Content search
+  - `WebFetch`/`WebSearch`: Web operations
+  - `Task`: Sub-agent delegation
+- **Permission Modes**:
+  - `--allowedTools`: Whitelist specific tools
+  - `--disallowedTools`: Blacklist specific tools
+  - `--permission-mode`: Set default behavior
 
 ### 6.5 Conversation Storage
 - Chats (including sub-threads) are stored locally in JSON or SQLite.
@@ -116,7 +258,145 @@ A cross-platform desktop application that provides a friendly GUI for interactin
 - **State Management**: Redux/Context (React) or Pinia/Vuex (Vue).
 - **Storage**: SQLite for conversations; secure storage API for keys.
 - **Telemetry**: Use a lightweight analytics service or self-hosted endpoint.
-- **Auto-Update**: Electron’s autoUpdater module or equivalent in Tauri.
+- **Auto-Update**: Electron's autoUpdater module or equivalent in Tauri.
+
+### Claude Code Integration Architecture
+- **SDK Integration**:
+  - Use @anthropic-ai/claude-code npm package
+  - Implement TypeScript wrapper for Claude Code SDK
+  - Stream responses using async iterators
+  - Handle multi-turn conversations with session persistence
+
+#### SDK Implementation Details
+```typescript
+// Main process Claude Code manager
+class ClaudeCodeManager {
+  private sessions: Map<string, ClaudeSession>;
+  
+  async createSession(options: ClaudeCodeOptions): Promise<string> {
+    const sessionId = generateUUID();
+    const session = new ClaudeSession({
+      maxTurns: options.maxTurns || 5,
+      systemPrompt: options.systemPrompt,
+      appendSystemPrompt: options.appendSystemPrompt,
+      allowedTools: options.allowedTools || [
+        "Read", "Write", "Edit", "MultiEdit",
+        "Bash", "Glob", "Grep", "WebSearch"
+      ],
+      disallowedTools: options.disallowedTools || [],
+      outputFormat: "stream-json",
+      inputFormat: "text",
+      permissionMode: options.permissionMode || "ask",
+      mcpServers: options.mcpServers || {},
+      cwd: options.workingDirectory,
+      verbose: options.verbose || false
+    });
+    this.sessions.set(sessionId, session);
+    return sessionId;
+  }
+  
+  async query(sessionId: string, prompt: string): AsyncGenerator<Message> {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error("Session not found");
+    
+    for await (const message of session.query(prompt)) {
+      yield message;
+    }
+  }
+}
+```
+
+#### IPC Communication Protocol
+```typescript
+// Renderer → Main Process
+interface ClaudeCodeRequest {
+  type: "create-session" | "query" | "resume" | "continue";
+  sessionId?: string;
+  options?: ClaudeCodeOptions;
+  prompt?: string;
+}
+
+// Main → Renderer Process  
+interface ClaudeCodeResponse {
+  type: "session-created" | "message" | "error" | "complete";
+  sessionId?: string;
+  message?: Message;
+  error?: string;
+  metadata?: {
+    totalCost?: number;
+    duration?: number;
+    tokensUsed?: number;
+  };
+}
+```
+
+#### Permission Handler
+```typescript
+class PermissionHandler {
+  async requestPermission(
+    tool: string,
+    action: string,
+    details: any
+  ): Promise<"allow" | "deny" | "always-allow"> {
+    return await ipcRenderer.invoke("request-permission", {
+      tool,
+      action,
+      details,
+      timestamp: Date.now()
+    });
+  }
+}
+```
+
+- **Process Architecture**:
+  - Main Process: Manages Claude Code CLI subprocess
+  - Renderer Process: UI and user interactions
+  - IPC Bridge: Secure communication between processes
+  - Background Workers: Handle long-running Claude Code operations
+
+- **Security Considerations**:
+  - Sandbox Claude Code execution environment
+  - Implement permission prompts for file system access
+  - Validate all hooks and sub-agent configurations
+  - Rate limiting for API calls
+  - Tool-specific permissions stored per session
+  - Audit log for all Claude Code actions
+
+- **Data Flow**:
+  1. User input → Renderer Process
+  2. IPC → Main Process
+  3. Main Process → Claude Code SDK
+  4. Claude Code → API (Anthropic/Bedrock/Vertex)
+  5. Response → Stream back through IPC
+  6. Update UI in real-time
+
+- **MCP (Model Context Protocol) Support**:
+  - Configure MCP servers via settings UI
+  - Support for common MCP tools (GitHub, Slack, etc.)
+  - Custom MCP server integration
+  - Environment variable management for MCP credentials
+
+#### Available Claude Code Models
+- **Claude Opus 4.1**: Most capable model for complex tasks
+- **Claude Sonnet 4**: Balance of capability and speed
+- **Claude Haiku 3.5**: Fast responses for simple tasks
+
+#### CLI Flags and Options Reference
+| Flag | Type | Description |
+|------|------|-------------|
+| `--add-dir` | string[] | Additional directories to access |
+| `--allowedTools` | string[] | Whitelist specific tools |
+| `--disallowedTools` | string[] | Blacklist specific tools |
+| `--print, -p` | boolean | Non-interactive mode |
+| `--output-format` | string | text/json/stream-json |
+| `--input-format` | string | text/stream-json |
+| `--verbose` | boolean | Enable detailed logging |
+| `--max-turns` | number | Limit agent iterations |
+| `--model` | string | Model selection |
+| `--permission-mode` | string | Permission handling |
+| `--resume` | string | Resume session by ID |
+| `--continue` | boolean | Continue recent session |
+| `--dangerously-skip-permissions` | boolean | Skip all prompts |
 
 ## 10. Metrics & Success Criteria
 - **Activation**: % of users who send at least one message after installation.
