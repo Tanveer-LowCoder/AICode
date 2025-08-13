@@ -3,9 +3,71 @@
   <head>
     <meta charset="UTF-8" />
     <title>Claude Desktop</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        background-color: #343541;
+        color: #ececf1;
+      }
+      #messages {
+        flex: 1;
+        overflow-y: auto;
+        padding-bottom: 1rem;
+      }
+      .message {
+        padding: 1rem;
+        display: flex;
+        justify-content: center;
+      }
+      .message.user {
+        background-color: #343541;
+      }
+      .message.bot {
+        background-color: #444654;
+      }
+      .message .bubble {
+        max-width: 800px;
+        width: 100%;
+        white-space: pre-wrap;
+      }
+      #message-form {
+        display: flex;
+        padding: 0.75rem;
+        border-top: 1px solid #4d4d4f;
+        background-color: #40414f;
+      }
+      #message-input {
+        flex: 1;
+        padding: 0.75rem;
+        background-color: transparent;
+        border: none;
+        color: #ececf1;
+      }
+      #message-form button {
+        margin-left: 0.5rem;
+        padding: 0.75rem 1rem;
+        background-color: #10a37f;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+      }
+    </style>
   </head>
   <body>
-    <h1>Hello Claude!</h1>
-    <p>Your Electron app is running.</p>
+    <div id="messages"></div>
+    <form id="message-form">
+      <input
+        id="message-input"
+        type="text"
+        placeholder="Send a message..."
+        autocomplete="off"
+      />
+      <button type="submit">Send</button>
+    </form>
+    <script src="renderer.js"></script>
   </body>
 </html>

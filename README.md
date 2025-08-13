@@ -1,6 +1,6 @@
 # Claude Desktop
 
-MVP Electron application providing a graphical interface for interacting with the Claude CLI. The project includes a simple Hello World example to validate the Electron setup.
+MVP Electron application providing a graphical interface for interacting with the Claude CLI. The project now ships with a minimal chat UI inspired by ChatGPT to validate the Electron setup and provide a foundation for future conversation features.
 
 ## Getting Started
 1. Install dependencies:
