@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
+const providers = require('./providers'); // Future: support multiple AI providers
 
 function createWindow() {
   const win = new BrowserWindow({
