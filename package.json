@@ -1,0 +1,13 @@
+{
+  "name": "claude-desktop",
+  "version": "0.1.0",
+  "description": "MVP Electron interface for Claude CLI",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"No tests specified\""
+  },
+  "devDependencies": {
+    "electron": "^25.3.1"
+  }
+}
